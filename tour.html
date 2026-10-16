@@ -125,7 +125,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    // 1. Firebase 설정
+    // 1. Firebase 설정 (본인의 Firebase Console 값으로 대체)
     const firebaseConfig = {
       apiKey: "YOUR_FIREBASE_API_KEY",
       authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
@@ -139,19 +139,20 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // 2. 관광콘텐츠랩 KorService2 API 설정 (Decoding 키 사용)
-    const TOUR_API_KEY = "YOUR_TOUR_API_SERVICE_KEY";
+    // 2. 관광공사 API 설정 (HTTPS 호환 설정)
+    const TOUR_API_KEY = "08255e4a7faa9ff0a64db77d7c15f7b661f78ade570c59806690af625c023496";
+    const API_ENDPOINT = "https://apis.data.go.kr/B551011/KorService2/areaBasedList2";
 
     const areaSelect = document.getElementById('areaSelect');
     const tourList = document.getElementById('tourList');
     const statusMessage = document.getElementById('statusMessage');
 
-    // 페이지 로드 시 Firebase 저장 상태 확인
+    // 페이지 로드 시 Firebase 확인
     window.addEventListener('DOMContentLoaded', async () => {
       await loadSavedAreaFromFirebase();
     });
 
-    // 지역 선택 시 이벤트
+    // 드롭다운 변경 이벤트
     areaSelect.addEventListener('change', async (e) => {
       const selectedAreaCode = e.target.value;
       const selectedAreaName = e.target.options[e.target.selectedIndex].text;
@@ -162,12 +163,11 @@
         return;
       }
 
-      // Firebase 저장 및 API 조회
       await saveSelectedAreaToFirebase(selectedAreaCode, selectedAreaName);
       await fetchAndRenderTourData(selectedAreaCode);
     });
 
-    // [Firebase] 저장된 지역 정보 확인
+    // [Firebase] 저장된 지역 로드
     async function loadSavedAreaFromFirebase() {
       statusMessage.textContent = '저장된 정보를 확인하는 중...';
       try {
@@ -188,7 +188,7 @@
       }
     }
 
-    // [Firebase] 선택 지역 업데이트
+    // [Firebase] 선택된 지역 저장
     async function saveSelectedAreaToFirebase(areaCode, areaName) {
       try {
         await set(ref(db, 'userActivity/lastSelectedArea'), {
@@ -201,26 +201,16 @@
       }
     }
 
-    // [API] KorService2/areaBasedList2 조회
+    // [API] 데이터 요청
     async function fetchAndRenderTourData(areaCode) {
       statusMessage.textContent = '관광 정보를 불러오는 중...';
       tourList.innerHTML = '';
 
-      const endpoint = 'https://apis.data.go.kr/B551011/KorService2/areaBasedList2';
-      const queryParams = new URLSearchParams({
-        serviceKey: TOUR_API_KEY,
-        numOfRows: '20',
-        pageNo: '1',
-        MobileOS: 'ETC',
-        MobileApp: 'AppTest',
-        _type: 'json',
-        listYN: 'Y',
-        arrange: 'A',
-        areaCode: areaCode
-      });
+      // API URL 생성 (인코딩 처리)
+      const requestUrl = `${API_ENDPOINT}?serviceKey=${encodeURIComponent(TOUR_API_KEY)}&numOfRows=20&pageNo=1&MobileOS=ETC&MobileApp=AppTest&_type=json&listYN=Y&arrange=A&areaCode=${areaCode}`;
 
       try {
-        const response = await fetch(`${endpoint}?${queryParams.toString()}`);
+        const response = await fetch(requestUrl);
         
         if (!response.ok) {
           throw new Error(`HTTP 에러: ${response.status}`);
@@ -237,33 +227,7 @@
       }
     }
 
-    // UI 렌더링
+    // [UI] 화면 렌더링 (HTTPS 이미지 URL 변환)
     function renderTourList(items) {
-      if (items.length === 0) {
-        statusMessage.textContent = '해당 지역에 등록된 관광 정보가 없습니다.';
-        return;
-      }
-
-      const defaultImg = 'https://via.placeholder.com/400x300?text=No+Image';
-
-      const cardsHtml = items.map(item => {
-        const imgSrc = item.firstimage ? item.firstimage : defaultImg;
-        const title = item.title || '제목 없음';
-        const address = item.addr1 ? `${item.addr1} ${item.addr2 || ''}` : '주소 정보 없음';
-
-        return `
-          <div class="card">
-            <img src="${imgSrc}" alt="${title}" loading="lazy" onError="this.src='${defaultImg}'">
-            <div class="card-content">
-              <div class="card-title">${title}</div>
-              <div class="card-address">${address}</div>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      tourList.innerHTML = cardsHtml;
-    }
-  </script>
-</body>
-</html>
+      if (!items || items.length === 0) {
+        statusMessage.textContent = '해당 지역에 등록된
