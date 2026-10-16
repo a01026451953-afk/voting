@@ -168,3 +168,102 @@
     });
 
     // [Firebase] 저장된 지역 정보 확인
+    async function loadSavedAreaFromFirebase() {
+      statusMessage.textContent = '저장된 정보를 확인하는 중...';
+      try {
+        const dbRef = ref(db);
+        const snapshot = await get(child(dbRef, 'userActivity/lastSelectedArea'));
+
+        if (snapshot.exists()) {
+          const savedData = snapshot.val();
+          areaSelect.value = savedData.areaCode;
+          await fetchAndRenderTourData(savedData.areaCode);
+        } else {
+          statusMessage.textContent = '지역을 선택하면 해당 지역의 관광 목록이 표시됩니다.';
+          tourList.innerHTML = '';
+        }
+      } catch (error) {
+        console.error("Firebase 읽기 에러:", error);
+        statusMessage.textContent = '데이터를 불러오는 중 오류가 발생했습니다.';
+      }
+    }
+
+    // [Firebase] 선택 지역 업데이트
+    async function saveSelectedAreaToFirebase(areaCode, areaName) {
+      try {
+        await set(ref(db, 'userActivity/lastSelectedArea'), {
+          areaCode: areaCode,
+          areaName: areaName,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error("Firebase 저장 에러:", error);
+      }
+    }
+
+    // [API] KorService2/areaBasedList2 조회
+    async function fetchAndRenderTourData(areaCode) {
+      statusMessage.textContent = '관광 정보를 불러오는 중...';
+      tourList.innerHTML = '';
+
+      const endpoint = 'https://apis.data.go.kr/B551011/KorService2/areaBasedList2';
+      const queryParams = new URLSearchParams({
+        serviceKey: TOUR_API_KEY,
+        numOfRows: '20',
+        pageNo: '1',
+        MobileOS: 'ETC',
+        MobileApp: 'AppTest',
+        _type: 'json',
+        listYN: 'Y',
+        arrange: 'A',
+        areaCode: areaCode
+      });
+
+      try {
+        const response = await fetch(`${endpoint}?${queryParams.toString()}`);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP 에러: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const items = data.response?.body?.items?.item || [];
+
+        statusMessage.textContent = '';
+        renderTourList(items);
+      } catch (error) {
+        console.error("API 호출 에러:", error);
+        statusMessage.textContent = '관광 정보 API를 불러오는 데 실패했습니다.';
+      }
+    }
+
+    // UI 렌더링
+    function renderTourList(items) {
+      if (items.length === 0) {
+        statusMessage.textContent = '해당 지역에 등록된 관광 정보가 없습니다.';
+        return;
+      }
+
+      const defaultImg = 'https://via.placeholder.com/400x300?text=No+Image';
+
+      const cardsHtml = items.map(item => {
+        const imgSrc = item.firstimage ? item.firstimage : defaultImg;
+        const title = item.title || '제목 없음';
+        const address = item.addr1 ? `${item.addr1} ${item.addr2 || ''}` : '주소 정보 없음';
+
+        return `
+          <div class="card">
+            <img src="${imgSrc}" alt="${title}" loading="lazy" onError="this.src='${defaultImg}'">
+            <div class="card-content">
+              <div class="card-title">${title}</div>
+              <div class="card-address">${address}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      tourList.innerHTML = cardsHtml;
+    }
+  </script>
+</body>
+</html>
