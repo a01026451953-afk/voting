@@ -176,4 +176,144 @@
   async function initApp() {
     showStatus("Firebase에서 최근 저장된 정보를 확인하는 중...");
     try {
-      const
+      const res = await fetch(`${FIREBASE_DB_URL}/lastSelectedArea.json`);
+      const savedData = await res.json();
+
+      if (savedData && savedData.areaCode && savedData.items) {
+        document.getElementById('areaCodeSelect').value = savedData.areaCode;
+        renderCards(savedData.items);
+        showStatus(`최근 저장된 [${savedData.areaName}] 정보 불러오기 완료`);
+      } else {
+        hideCardView();
+        showStatus("선택된 지역 정보가 없습니다. 지역을 선택해 주세요.");
+      }
+    } catch (e) {
+      hideCardView();
+      showStatus("초기 데이터 로딩 중 오류가 발생했습니다.");
+    }
+  }
+
+  /**
+   * 드롭다운 지역 선택 변경 시 실행
+   */
+  async function onAreaChange() {
+    const selectElem = document.getElementById('areaCodeSelect');
+    const areaCode = selectElem.value;
+    const areaName = selectElem.options[selectElem.selectedIndex].text;
+
+    if (!areaCode) {
+      hideCardView();
+      showStatus("지역을 선택해 주세요.");
+      return;
+    }
+
+    showStatus(`[${areaName}] 관광 정보를 불러오는 중...`);
+
+    // 최신 KorService2 API 호출
+    const items = await fetchTourData(areaCode);
+
+    if (items && items.length > 0) {
+      renderCards(items);
+      // Firebase에 최신 결과 갱신
+      await saveToFirebase(areaCode, areaName, items);
+      showStatus(`[${areaName}] 정보 조회 및 Firebase 저장 완료!`);
+    } else {
+      hideCardView();
+      showStatus(`[${areaName}]의 관광 정보 데이터가 없습니다.`);
+    }
+  }
+
+  /**
+   * 한국관광공사 KorService2 / areaBasedList2 API 호출
+   */
+  async function fetchTourData(areaCode) {
+    const endpoint = `https://apis.data.go.kr/B551011/KorService2/areaBasedList2` +
+      `?serviceKey=${TOUR_API_KEY}` +
+      `&numOfRows=12&pageNo=1&MobileOS=ETC&MobileApp=AppTest&_type=json` +
+      `&areaCode=${areaCode}`;
+
+    try {
+      const response = await fetch(endpoint);
+      const data = await response.json();
+      const itemArr = data.response?.body?.items?.item;
+      return Array.isArray(itemArr) ? itemArr : [];
+    } catch (error) {
+      console.error("API 호출 에러:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Firebase Realtime Database 데이터 저장 (PUT)
+   */
+  async function saveToFirebase(areaCode, areaName, items) {
+    const payload = {
+      areaCode: areaCode,
+      areaName: areaName,
+      updatedAt: new Date().toISOString(),
+      items: items
+    };
+
+    try {
+      await fetch(`${FIREBASE_DB_URL}/lastSelectedArea.json`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      console.error("Firebase 저장 실패:", e);
+    }
+  }
+
+  /**
+   * 카드북 형태로 목록 UI 표출
+   */
+  function renderCards(items) {
+    const cardGrid = document.getElementById('cardGrid');
+    const emptyView = document.getElementById('emptyView');
+
+    cardGrid.innerHTML = '';
+    cardGrid.classList.remove('hidden');
+    emptyView.classList.add('hidden');
+
+    const defaultImg = 'https://picsum.photos/400/250?blur=2';
+
+    items.forEach(item => {
+      let rawImgUrl = item.firstimage || item.firstimage2;
+      let imageUrl = defaultImg;
+
+      if (rawImgUrl) {
+        // http:// 이미지 서버 접속을 해소하기 위한 이미지 프록시(weserv.nl) 적용
+        // http:// 삭제 후 프록시 URL 부착
+        const cleanUrl = rawImgUrl.replace(/^https?:\/\//i, '');
+        imageUrl = `https://images.weserv.nl/?url=${encodeURIComponent(cleanUrl)}`;
+      }
+
+      const title = item.title || '관광지명 없음';
+      const addr = item.addr1 || item.addr2 || '주소 정보 없음';
+
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <img src="${imageUrl}" class="card-img" alt="${title}" onerror="this.onerror=null; this.src='${defaultImg}';">
+        <div class="card-body">
+          <h3 class="card-title">${title}</h3>
+          <p class="card-addr">📍 ${addr}</p>
+        </div>
+      `;
+      cardGrid.appendChild(card);
+    });
+  }
+
+  function hideCardView() {
+    document.getElementById('cardGrid').classList.add('hidden');
+    document.getElementById('emptyView').classList.remove('hidden');
+  }
+
+  function showStatus(msg) {
+    document.getElementById('statusMsg').innerText = msg;
+  }
+</script>
+
+</body>
+</html>
